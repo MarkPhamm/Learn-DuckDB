@@ -4,7 +4,7 @@
 
 DuckDB is an in-process SQL OLAP database, which means it runs within the same process as the application using it. This unique feature allows DuckDB to offer the advantages of a database without the complexities of managing one.
 
-The reason why I love DuckDB is that it's the easiest OLAP database you can set up. You don't need no Snowflake free tier or stomp your foot into the AWS redshift free tier trap. It's simple, a `.db` file inside of your computer :)
+The reason why I love DuckDB is that it's the easiest OLAP database you can set up. You don't need no Snowflake free tier or stomp your foot into the AWS redshift free tier trap. It's simple, a `.db` file inside of your computer :) However, it's noted to mention that duckdb is a **in-memory** process, by default, it won't persist any data. But don't worry, there's a work around for this using `.open`
 
 Also, instead of writing transformation logic in Python (Pandas) of which I'm not really good at, I can now write custom transformation logic with SQL, of which I'm wayyyyy more confident with.
 
@@ -204,11 +204,125 @@ print(result.head())
 
 DuckDB provides a command-line interface (CLI) that allows you to execute SQL commands interactively or run SQL scripts from files. This is particularly useful for batch processing, testing queries, or automating data workflows.
 
+**From the command line (outside DuckDB CLI):**
+
 To run a SQL file using DuckDB's CLI, you can use input redirection:
 
 ```zsh
 duckdb < sql/demo.sql
 ```
+
+Or initialize DuckDB with a SQL file:
+
+```zsh
+duckdb -init sql/demo.sql
+```
+
+**From inside DuckDB CLI (interactive mode):**
+
+If you're already inside the DuckDB CLI (you'll see the `D` prompt), you can't use shell redirection. Instead, use the `.read` command to execute a SQL file:
+
+```zsh
+# Start DuckDB CLI
+duckdb
+
+# Inside DuckDB CLI, run:
+.read sql/demo.sql
+```
+
+**Note:** When inside the DuckDB CLI, shell commands like `duckdb < file.sql` won't work. Use `.read` instead.
+
+### 4.5 Persisting Data in DuckDB
+
+By default, DuckDB runs in **in-memory mode**, which means all data is stored in RAM and will be lost when the connection is closed. However, DuckDB can also persist data to disk by connecting to a database file (`.db` file).
+
+#### Why Persist Data?
+
+While in-memory mode is great for quick analysis and testing, you'll want to persist data when:
+
+- You need to keep data between sessions
+- Working with large datasets that should be stored on disk
+- Building a data pipeline that needs to maintain state
+- Sharing data across multiple sessions or applications
+
+#### Using a Persistent Database File
+
+**With DuckDB CLI:**
+
+To connect to a persistent database file (or create one if it doesn't exist):
+
+```zsh
+# Connect to a database file
+duckdb database/my_database.db
+
+# Run SQL file against a persistent database
+duckdb database/my_database.db < sql/demo.sql
+
+# or use the open command
+duckdb 
+
+
+```
+
+**With Python:**
+
+```python
+import duckdb
+
+# Connect to a persistent database file
+conn = duckdb.connect('database/my_database.db')
+
+# All tables and data created will persist to this file
+conn.execute("CREATE TABLE ducks AS SELECT 3 AS age, 'mandarin' AS breed")
+conn.execute("SHOW tables")
+
+# Close connection - data is saved to disk
+conn.close()
+
+# Reconnect later - your data is still there!
+conn = duckdb.connect('database/my_database.db')
+result = conn.execute("SELECT * FROM ducks").fetchall()
+print(result)
+```
+
+#### In-Memory vs Persistent Database
+
+| Feature | In-Memory (`duckdb.connect()`) | Persistent (`duckdb.connect('file.db')`) |
+|--------|-------------------------------|------------------------------------------|
+| Storage | RAM only | Disk file (.db) |
+| Persistence | Data lost on disconnect | Data persists after disconnect |
+| Speed | Faster (RAM access) | Slightly slower (disk I/O) |
+| Use Case | Quick analysis, testing | Production data, long-term storage |
+
+#### Example: Creating and Querying a Persistent Database
+
+```python
+import duckdb
+
+# Create/connect to persistent database
+conn = duckdb.connect('database/taxi_data.db')
+
+# Create a table from a Parquet file
+conn.execute("""
+    CREATE TABLE taxi_trips AS 
+    SELECT * FROM read_parquet('data/parquet/taxi_2019_04.parquet')
+""")
+
+# Query the persistent data
+result = conn.execute("""
+    SELECT 
+        COUNT(*) as total_trips,
+        AVG(fare_amount) as avg_fare
+    FROM taxi_trips
+""").fetchall()
+
+print(result)
+
+# Close - data is saved to database/taxi_data.db
+conn.close()
+```
+
+The database file will be created in the `database/` directory and will contain all your tables and data, ready to use in future sessions.
 
 ## 5. MotherDuck
 
